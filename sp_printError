@@ -1,0 +1,22 @@
+USE [C2A_ADMIN]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_DWH_printError]    Script Date: 16.09.2026 20:32:11 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE   PROCEDURE [dbo].sp_printError
+WITH EXECUTE AS SELF
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	-- Print error information. 
+	PRINT 'Error ' + ISNULL(CONVERT(varchar(50), ERROR_NUMBER()),'-') +
+		  ', Severity ' + ISNULL(CONVERT(varchar(5), ERROR_SEVERITY()),'-') +
+		  ', State ' + ISNULL(CONVERT(varchar(5), ERROR_STATE()),'-') + 
+		  ', Procedure ' + ISNULL(ERROR_PROCEDURE(), '-') + 
+		  ', Line ' + ISNULL(CONVERT(varchar(5), ERROR_LINE()),'-');
+	PRINT 'Error message: '+ ISNULL(ERROR_MESSAGE(),'-');
+END;
