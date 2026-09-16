@@ -1,0 +1,39 @@
+USE [C2A_ADMIN]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_DWH_info]    Script Date: 16.09.2026 20:33:20 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE   PROCEDURE [dbo].[sp_InfoLog]
+	@blockName VARCHAR (255) = '',
+	@userMessage VARCHAR (4000) = ''
+WITH EXECUTE AS SELF
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+
+		INSERT [dbo].DWH_log
+			(			
+				[logLevel],
+				[blockName],
+				[userMessage],
+				[userName]
+ 			) 
+		VALUES 
+			(
+				'info',
+				@blockName,
+				@userMessage,
+				SYSTEM_USER -- true login of user doing something in DB
+			);
+
+	END TRY
+	BEGIN CATCH
+		EXECUTE [dbo].[sp_printError];
+	END CATCH
+
+END;
