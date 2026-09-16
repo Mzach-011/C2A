@@ -1,0 +1,128 @@
+USE [C2A_ADMIN]
+GO
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+  
+CREATE   PROCEDURE 
+
+[dbo].[sp_](
+  @numRows                           INT = 0 OUTPUT,
+  @errRows                           INT = 0 OUTPUT,
+  @returnCode                        INT = 0 OUTPUT,
+  @returnMessage                     NVARCHAR(4000) OUTPUT
+  )
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+
+
+Declare 
+  	@message varchar(255);
+ 
+ Declare @ProcName nvarchar(255) = 'sp_DOPLN'
+
+DECLARE 
+    @JobName SYSNAME = '',
+    @JobId UNIQUEIDENTIFIER,
+    @StartTime DATETIME = GETDATE(),
+    @IsRunning BIT = 1,
+    @RunStatus nvarchar(MAX),
+    @RunMessage NVARCHAR(MAX);
+
+-- Zaloguj, že zapínáme proceduru 
+SET @message = 'Start procedury'
+EXEC [C2A_ADMIN].[dbo].sp_InfoLog @ProcName, @message;
+
+-- Jdu po JOBID Raději - možná k ničemu ale zní to víc profesionálně 
+SELECT @JobId = job_id
+FROM msdb.dbo.sysjobs
+WHERE name = @JobName;
+
+
+--select @jobid
+--select @StartTime 
+
+-- Pokud job name neznám vyhodím todle.
+IF @JobId IS NULL
+BEGIN
+    RAISERROR('Job s názvem %s nebyl nalezen.', 16, 1, @JobName);
+    RETURN;
+END
+
+-- Spouštění jobu 
+EXEC msdb.dbo.sp_start_job @job_id = @JobId;
+
+
+-- Čekám než job dojede 
+WHILE @IsRunning = 1
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM msdb.dbo.sysjobactivity ja
+        WHERE ja.job_id = @JobId
+          AND ja.run_requested_date >= DATEADD(SS,-2,@StartTime)
+          AND ja.stop_execution_date IS NULL
+    )
+    BEGIN
+        -- job stále běží
+        WAITFOR DELAY '00:00:05';  -- čeká 10 sekund
+		print 'Job stále běží'
+    END
+    ELSE
+    BEGIN
+        SET @IsRunning = 0; -- job skončil
+    END
+END
+
+
+-- 4️⃣ Zjištění výsledku konkrétní instance
+select
+@RunStatus = CASE 
+        WHEN run_status = 0 THEN 'Failed'
+        WHEN run_status = 1 THEN 'Succeeded'
+        WHEN run_status = 2 THEN 'Retry'
+        WHEN run_status = 3 THEN 'Canceled'
+        ELSE 'Unknown'
+      END 
+from msdb.dbo.sysjobhistory 
+where job_id = @JobId 
+and CONVERT(DATE, CONVERT(CHAR(8), run_date)) = CAST(@StartTime as date)
+and DATEADD(SS,5,cast(CONCAT(CONVERT(CHAR(8), run_date),' ',STUFF(STUFF(RIGHT('000000' + CAST(run_time AS VARCHAR(6)), 6),3,0,':'),6,0,':')) as datetime)) > = @StartTime
+and step_id = 0
+
+IF @RunStatus = 'Succeeded' 
+BEGIN 
+   SET @message = 'Success - Procedure Finished'
+   EXEC [C2A_ADMIN].[dbo].sp_InfoLog @ProcName, @message;
+  RETURN;
+END
+
+ELSE 
+
+BEGIN
+	SELECT
+		@numRows = 0,
+		@errRows = 0,
+		@returnCode = '50666',
+		@returnMessage = '[Error] SSIS Job ' + @JobName+' failed. Seek more information in Job History or Integration Services Catalog for detailed error logs.';
+	EXEC [C2A_ADMIN].dbo.sp_ErrorLog @ProcName, @returnMessage
+    RAISERROR(@returnMessage, 16, 1, @procName);
+    RETURN;
+END
+
+
+
+end
+
+
+
+/*
+EXEC [DWH_ADMIN].[dbo].[usp_DWH_execTransformation] @transformationName = '[DWH_L2_SrvcRep].[dbo].[trf_load_SSIS_ClientMigrationMatrix__CRM]', @dwh_operationDatetime = '2026-08-23'
+select * from DWH_ADMIN.dbo.DWH_log where blockname = 'trf_load_SSIS_ClientMigrationMatrix__CRM' order by logtime desc
+*/
